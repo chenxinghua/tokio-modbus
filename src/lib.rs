@@ -41,8 +41,10 @@ pub use self::slave::{Slave, SlaveId};
 
 mod codec;
 
+pub mod query;
+
 mod error;
-pub use self::error::{Error, ProtocolError};
+pub use self::error::{Error, ProtocolError, QueryError};
 
 mod frame;
 #[cfg(feature = "server")]
