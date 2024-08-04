@@ -18,6 +18,7 @@ pub mod rtu {
 #[cfg(feature = "tcp")]
 pub mod tcp {
     pub use crate::client::tcp::*;
+    pub use crate::query::tcp::*;
 }
 
 #[allow(missing_docs)]

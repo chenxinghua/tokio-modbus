@@ -42,3 +42,13 @@ pub enum ProtocolError {
         result: Result<Response, ExceptionResponse>,
     },
 }
+
+#[derive(Error, Debug)]
+pub enum QueryError {
+    #[error("eof reached")]
+    EofReached,
+    #[error("transport failed")]
+    TransportFailed(#[from] std::io::Error),
+    #[error("exception response")]
+    ModbusException(#[from] ExceptionResponse),
+}
