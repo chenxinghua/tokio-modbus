@@ -3,6 +3,7 @@
 
 use std::collections::VecDeque;
 use std::result::Result;
+use std::borrow::Cow;
 
 use futures_util::{SinkExt as _, StreamExt as _};
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -90,13 +91,13 @@ where
     }
 
     /// Write multiple coils (0x0F)
-    pub fn write_multiple_coils(&mut self, addr: Address, coils: &'a [Coil]) {
-        self.enqueue(Request::WriteMultipleCoils(addr, std::borrow::Cow::Borrowed(coils)));
+    pub fn write_multiple_coils(&mut self, addr: Address, coils: &[Coil]) {
+        self.enqueue(Request::WriteMultipleCoils(addr, Cow::Owned(coils.into())));
     }
 
     /// Write multiple holding registers (0x10)
-    pub fn write_multiple_registers(&mut self, addr: Address, words: &'a [Word]) {
-        self.enqueue(Request::WriteMultipleRegisters(addr, std::borrow::Cow::Borrowed(words)));
+    pub fn write_multiple_registers(&mut self, addr: Address, words: &[Word]) {
+        self.enqueue(Request::WriteMultipleRegisters(addr, Cow::Owned(words.into())));
     }
 
     pub fn enqueue_raw(&mut self, req: Request<'a>) {
