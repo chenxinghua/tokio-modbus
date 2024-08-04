@@ -21,67 +21,89 @@ pub struct Query<'a, T> {
     unit_id: UnitId,
     delay_timer: Interval,
     queries: VecDeque<RequestAdu<'a>>,
-    framed: Framed<T, codec::tcp::ClientCodec>,
+    framed: Option<Framed<T, codec::tcp::ClientCodec>>,
 }
 
 impl<'a, T> Query<'a, T>
 where
     T: AsyncRead + AsyncWrite + Unpin,
 {
-    pub fn new(t: T, unit_id: UnitId, delay_time: Duration) -> Query<'a, T> {
+    pub fn new(unit_id: UnitId, delay_time: Duration) -> Query<'a, T> {
         Query {
             unit_id,
-            framed: Framed::new(t, codec::tcp::ClientCodec::default()),
+            // framed: Framed::new(t, codec::tcp::ClientCodec::default()),
+            framed: None,
             delay_timer: time::interval(delay_time),
             queries: VecDeque::new(),
         }
     }
 
-    pub fn recover(&mut self, t: T) {
-        self.framed = Framed::new(t, codec::tcp::ClientCodec::default());
+    pub fn new_with_transport(t: T, unit_id: UnitId, delay_time: Duration) -> Query<'a, T> {
+        Query {
+            unit_id,
+            framed: Some(Framed::new(t, codec::tcp::ClientCodec::default())),
+            delay_timer: time::interval(delay_time),
+            queries: VecDeque::new(),
+        }
+    }
+
+    pub fn set_transport(&mut self, t: T) {
+        self.framed = Some(Framed::new(t, codec::tcp::ClientCodec::default()));
+    }
+
+    pub fn discard(&mut self) {
+        self.queries.clear();
+    }
+
+    pub fn transport_ok(&mut self) -> bool {
+        self.framed.is_some()
     }
 
     /// Read multiple coils (0x01)
     pub fn read_coils(&mut self, addr: Address, cnt: Quantity) {
-        self.prepare(Request::ReadCoils(addr, cnt));
+        self.enqueue(Request::ReadCoils(addr, cnt));
     }
 
     /// Read multiple discrete inputs (0x02)
     pub fn read_discrete_inputs(&mut self, addr: Address, cnt: Quantity) {
-        self.prepare(Request::ReadDiscreteInputs(addr, cnt));
+        self.enqueue(Request::ReadDiscreteInputs(addr, cnt));
     }
 
     /// Read multiple holding registers (0x03)
     pub fn read_holding_registers(&mut self, addr: Address, cnt: Quantity) {
-        self.prepare(Request::ReadHoldingRegisters(addr, cnt));
+        self.enqueue(Request::ReadHoldingRegisters(addr, cnt));
     }
 
     /// Read multiple input registers (0x04)
     pub fn read_input_registers(&mut self, addr: Address, cnt: Quantity) {
-        self.prepare(Request::ReadInputRegisters(addr, cnt));
+        self.enqueue(Request::ReadInputRegisters(addr, cnt));
     }
 
     /// Write a single coil (0x05)
     pub fn write_single_coil(&mut self, addr: Address, coil: Coil) {
-        self.prepare(Request::WriteSingleCoil(addr, coil));
+        self.enqueue(Request::WriteSingleCoil(addr, coil));
     }
 
     /// Write a single holding register (0x06)
     pub fn write_single_register(&mut self, addr: Address, word: Word) {
-        self.prepare(Request::WriteSingleRegister(addr, word));
+        self.enqueue(Request::WriteSingleRegister(addr, word));
     }
 
     /// Write multiple coils (0x0F)
     pub fn write_multiple_coils(&mut self, addr: Address, coils: &'a [Coil]) {
-        self.prepare(Request::WriteMultipleCoils(addr, std::borrow::Cow::Borrowed(coils)));
+        self.enqueue(Request::WriteMultipleCoils(addr, std::borrow::Cow::Borrowed(coils)));
     }
 
     /// Write multiple holding registers (0x10)
     pub fn write_multiple_registers(&mut self, addr: Address, words: &'a [Word]) {
-        self.prepare(Request::WriteMultipleRegisters(addr, std::borrow::Cow::Borrowed(words)));
+        self.enqueue(Request::WriteMultipleRegisters(addr, std::borrow::Cow::Borrowed(words)));
     }
 
-    fn prepare<R>(&mut self, req: R)
+    pub fn enqueue_raw(&mut self, req: Request<'a>) {
+        self.enqueue(req);
+    }
+
+    fn enqueue<R>(&mut self, req: R)
     where
         R: Into<RequestPdu<'a>>
     {
@@ -97,32 +119,44 @@ where
     }
 
     pub async fn next(&mut self) -> Result<Option<Response>, QueryError> {
-        tokio::select! {
-            r = self.framed.next() => match r {
-                None => Err(QueryError::EofReached),
-                Some(Err(e)) => Err(QueryError::TransportFailed(e)),
-                Some(Ok(v)) => match v.pdu.0 {
-                    Ok(v1) => {
-                        self.advance().await?;
-                        Ok(Some(v1))
+        match &mut self.framed {
+            Some(framed) => tokio::select! {
+                r = framed.next() => match r {
+                    None => {
+                        self.discard();
+                        self.framed = None;
+                        Err(QueryError::EofReached)
                     },
-                    Err(e) => Err(QueryError::ModbusException(e)),
-                }
+                    Some(Err(e)) => Err(QueryError::TransportFailed(e)),
+                    Some(Ok(v)) => match v.pdu.0 {
+                        Ok(v1) => {
+                            self.advance().await?;
+                            Ok(Some(v1))
+                        },
+                        Err(e) => Err(QueryError::ModbusException(e)),
+                    }
+                },
+                _ = self.delay_timer.tick() => {
+                    self.advance().await.map(|_| None)
+                },
             },
-            _ = self.delay_timer.tick() => {
-                self.advance().await.map(|_| None)
-            },
+            None => Err(QueryError::EofReached),
         }
     }
 
     async fn advance(&mut self) -> Result<(), QueryError> {
-        if let Some(q) = self.queries.pop_front() {
-            self.framed
-                .send(q)
-                .await
-                .map_err(|e| QueryError::TransportFailed(e))
-        } else {
-            Ok(())
+        match &mut self.framed {
+            Some(framed) => {
+                if let Some(q) = self.queries.pop_front() {
+                    framed
+                        .send(q)
+                        .await
+                        .map_err(|e| QueryError::TransportFailed(e))
+                } else {
+                    Ok(())
+                }
+            },
+            None => Err(QueryError::EofReached),
         }
     }
 }
