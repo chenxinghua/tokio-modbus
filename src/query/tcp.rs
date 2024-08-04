@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2017-2024 slowtec GmbH <post@slowtec.de>
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
+use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::result::Result;
-use std::borrow::Cow;
 
 use futures_util::{SinkExt as _, StreamExt as _};
 use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::time::{self, Duration, Interval};
 use tokio_util::codec::Framed;
-use tokio::time::{self, Interval, Duration};
 
 use crate::{
     codec,
@@ -32,7 +32,6 @@ where
     pub fn new(unit_id: UnitId, delay_time: Duration) -> Query<'a, T> {
         Query {
             unit_id,
-            // framed: Framed::new(t, codec::tcp::ClientCodec::default()),
             framed: None,
             delay_timer: time::interval(delay_time),
             queries: VecDeque::new(),
@@ -97,7 +96,10 @@ where
 
     /// Write multiple holding registers (0x10)
     pub fn write_multiple_registers(&mut self, addr: Address, words: &[Word]) {
-        self.enqueue(Request::WriteMultipleRegisters(addr, Cow::Owned(words.into())));
+        self.enqueue(Request::WriteMultipleRegisters(
+            addr,
+            Cow::Owned(words.into()),
+        ));
     }
 
     pub fn enqueue_raw(&mut self, req: Request<'a>) {
@@ -106,12 +108,12 @@ where
 
     fn enqueue<R>(&mut self, req: R)
     where
-        R: Into<RequestPdu<'a>>
+        R: Into<RequestPdu<'a>>,
     {
         let adu = RequestAdu {
             hdr: Header {
                 transaction_id: 0,
-                unit_id: self.unit_id
+                unit_id: self.unit_id,
             },
             pdu: req.into(),
             disconnect: false,
@@ -156,7 +158,7 @@ where
                 } else {
                     Ok(())
                 }
-            },
+            }
             None => Err(QueryError::EofReached),
         }
     }
