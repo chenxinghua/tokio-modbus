@@ -104,6 +104,7 @@ impl FrameDecoder {
 }
 
 #[derive(Debug, Default, Eq, PartialEq)]
+#[cfg(feature = "server")]
 pub(crate) struct RequestDecoder {
     frame_decoder: FrameDecoder,
 }
@@ -119,10 +120,12 @@ pub(crate) struct ClientCodec {
 }
 
 #[derive(Debug, Default, Eq, PartialEq)]
+#[cfg(feature = "server")]
 pub(crate) struct ServerCodec {
     pub(crate) decoder: RequestDecoder,
 }
 
+#[cfg(feature = "server")]
 fn get_request_pdu_len(adu_buf: &BytesMut) -> Result<Option<usize>> {
     if let Some(fn_code) = adu_buf.get(1) {
         let len = match fn_code {
@@ -213,6 +216,7 @@ fn check_crc(adu_data: &[u8], expected_crc: u16) -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "server")]
 impl Decoder for RequestDecoder {
     type Item = (SlaveId, Bytes);
     type Error = Error;
@@ -295,6 +299,7 @@ impl Decoder for ClientCodec {
     }
 }
 
+#[cfg(feature = "server")]
 impl Decoder for ServerCodec {
     type Item = RequestAdu<'static>;
     type Error = Error;
@@ -354,6 +359,7 @@ impl<'a> Encoder<RequestAdu<'a>> for ClientCodec {
     }
 }
 
+#[cfg(feature = "server")]
 impl Encoder<ResponseAdu> for ServerCodec {
     type Error = Error;
 
