@@ -128,7 +128,7 @@ where
                     None => {
                         self.discard();
                         self.framed = None;
-                        Err(QueryError::EofReached)
+                        Err(QueryError::ServerClosed)
                     },
                     Some(Err(e)) => Err(QueryError::TransportFailed(e)),
                     Some(Ok(v)) => match v.pdu.0 {
@@ -143,7 +143,7 @@ where
                     self.advance().await.map(|_| None)
                 },
             },
-            None => Err(QueryError::EofReached),
+            None => Err(QueryError::ServerNotConnected),
         }
     }
 
@@ -159,7 +159,7 @@ where
                     Ok(())
                 }
             }
-            None => Err(QueryError::EofReached),
+            None => Err(QueryError::ServerNotConnected),
         }
     }
 }
