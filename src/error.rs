@@ -45,8 +45,10 @@ pub enum ProtocolError {
 
 #[derive(Error, Debug)]
 pub enum QueryError {
-    #[error("eof reached")]
-    EofReached,
+    #[error("server isn't connected")]
+    ServerNotConnected,
+    #[error("server closed")]
+    ServerClosed,
     #[error("transport failed")]
     TransportFailed(#[from] std::io::Error),
     #[error("exception response")]
