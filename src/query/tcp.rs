@@ -41,14 +41,14 @@ where
     pub fn new_with_transport(t: T, unit_id: UnitId, delay_time: Duration) -> Query<'a, T> {
         Query {
             unit_id,
-            framed: Some(Framed::new(t, codec::tcp::ClientCodec::default())),
+            framed: Some(Framed::new(t, codec::tcp::ClientCodec::new())),
             delay_timer: time::interval(delay_time),
             queries: VecDeque::new(),
         }
     }
 
     pub fn set_transport(&mut self, t: T) {
-        self.framed = Some(Framed::new(t, codec::tcp::ClientCodec::default()));
+        self.framed = Some(Framed::new(t, codec::tcp::ClientCodec::new()));
     }
 
     pub fn discard(&mut self) {
@@ -116,7 +116,6 @@ where
                 unit_id: self.unit_id,
             },
             pdu: req.into(),
-            disconnect: false,
         };
         self.queries.push_back(adu);
     }
